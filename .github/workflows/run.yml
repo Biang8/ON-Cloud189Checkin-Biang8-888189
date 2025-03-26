@@ -23,10 +23,10 @@ jobs:
     # 指定作业运行时使用的环境变量
     environment: user
     steps:
-      # 步骤 1: 随机延迟 0 - 300 秒，避免集中请求服务器
-      - name: Random delay 0 - 300 seconds
+      # 步骤 1: 随机延迟 0 - 200 秒，避免集中请求服务器
+      - name: Random delay 0 - 200 seconds  
         run: |
-          delay=$((RANDOM % 301))
+          delay=$((RANDOM % 201))  
           echo "Will delay $delay seconds before proceeding..."
           sleep $delay
           echo "Delay of $delay seconds completed, proceeding with subsequent steps."
