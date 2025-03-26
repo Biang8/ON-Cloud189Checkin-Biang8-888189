@@ -1,44 +1,72 @@
 name: Cloud check in action
+
+# 定义触发工作流的事件
 on:
+  # 当代码推送到 main 分支时触发
   push:
     branches:
       - main
+  # 当用户对仓库进行 watch 操作时触发
   watch:
-    types: started
+    types: [started]
+  # 手动触发工作流
   workflow_dispatch:
+  # 定时任务，每天北京时间 0 点触发（对应 UTC 时间 16 点）
   schedule:
-    - cron: 35 2 * * *
+    - cron: '0 16 * * *'
+
+# 定义工作流中的作业
 jobs:
   build-and-deploy:
+    # 指定作业运行的环境，这里使用最新的 Ubuntu 系统
     runs-on: ubuntu-latest
+    # 指定作业运行时使用的环境变量
     environment: user
     steps:
-      - name: 🔀 random delay 0-300 seconds
-        run: sleep $((RANDOM % 301))
+      # 步骤 1: 随机延迟 0 - 300 秒，避免集中请求服务器
+      - name: Random delay 0 - 300 seconds
+        run: |
+          delay=$((RANDOM % 301))
+          echo "Will delay $delay seconds before proceeding..."
+          sleep $delay
+          echo "Delay of $delay seconds completed, proceeding with subsequent steps."
 
-      - name: 🔌 Check out code
-        uses: actions/checkout@main
+      # 步骤 2: 检出代码到运行环境
+      - name: Check out code
+        uses: actions/checkout@v4
 
-      - name: 🔨 Setup Node.js environment
-        uses: actions/setup-node@main
+      # 步骤 3: 设置 Node.js 环境，使用版本 18 并启用 npm 缓存
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: npm
 
-      - name: 👾 Check if Debug is true
+      # 步骤 4: 检查是否开启调试模式，如果开启则设置环境变量
+      - name: Check if debug mode is enabled
         if: vars.debug == '1'
         run: |
+          echo "Debug mode is enabled. Setting environment variable CLOUD189_VERBOSE=1."
           echo "CLOUD189_VERBOSE=1" >> $GITHUB_ENV
-      
-      - name: 📹 Restore cached Cookie
-        id: cache-cookie-restore
-        uses: actions/cache/restore@v4
+
+      # 步骤 5: 检查是否启用缓存 Token，如果启用则设置环境变量
+      - name: Check if cache token is enabled
+        if: vars.cacheToken == '1'
+        run: |
+          echo "Cache token is enabled. Setting environment variable CACHE_TOKEN=1."
+          echo "CACHE_TOKEN=1" >> $GITHUB_ENV
+
+      # 步骤 6: 恢复或保存缓存的 Token 目录
+      - name: Cache token directory
+        if: vars.cacheToken == '1'
+        uses: actions/cache@v4
         with:
           path: .token
-          key: ${{ runner.os }}-cache-token
+          key: ${{ runner.os }}-cache-token-${{ hashFiles('.token/*.json') }}
           restore-keys: ${{ runner.os }}-cache-token-
 
-      - name: 🔧 Init secrets
+      # 步骤 7: 初始化机密信息，将仓库的 secrets 转换为环境变量
+      - name: Initialize secrets
         uses: shine1594/secrets-to-env-action@master
         with:
           secrets: ${{ toJSON(secrets) }}
@@ -46,25 +74,27 @@ jobs:
           prefix_prod: ""
           file_name_prod: .env
 
-      - name: 📡 Init dependencies
-        run: npm install
+      # 步骤 8: 安装项目依赖
+      - name: Install project dependencies
+        run: |
+          echo "Starting to install project dependencies..."
+          npm install
 
-      - name: 🚀 Run
+      # 步骤 9: 运行项目，最多重试 3 次，每次超时时间为 30 分钟
+      - name: Run project
         uses: nick-fields/retry@master
         with:
           timeout_minutes: 30
           max_attempts: 3
-          command: npm start
-      
-      - name: 📹 Save cached Cookie
-        uses: actions/cache/save@v4
-        with:
-          path: .token
-          key: ${{ runner.os }}-cache-token-${{ hashFiles('.token/*.json') }}
+          command: |
+            echo "Starting to run the project, with a maximum of 3 retries and a timeout of 30 minutes per attempt..."
+            npm start
 
-      - name: 🚗 Keep Running
+      # 步骤 10: 如果是定时任务触发，则进行一次空提交并推送代码
+      - name: Keep the workflow running
         if: github.event_name == 'schedule'
         run: |
+          echo "This workflow was triggered by a scheduled task. Making an empty commit and pushing the code..."
           git config --local user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           git config --local user.name "${{ github.actor }}"
           git remote set-url origin https://${{ github.actor }}:${{ github.token }}@github.com/${{ github.repository }}
@@ -72,10 +102,11 @@ jobs:
           git commit --allow-empty -m "Keep Running..."
           git push
 
-      - name: 🎉 Delete old workflow run
+      # 步骤 11: 删除旧的工作流运行记录，保留最新的 50 条记录
+      - name: Delete old workflow runs
         uses: Mattraks/delete-workflow-runs@main
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
           retain_days: 0
-          keep_minimum_runs: 50
+          keep_minimum_runs: 50      
